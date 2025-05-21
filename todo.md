@@ -130,17 +130,20 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
 ## Phase 2: Agent Training & Evaluation
 
 ### 5. Training Script (`train_agent.py`)
-    - [ ] Import `TradingEnv`, `CustomCNN`, `SAC` from `stable_baselines3`.
-    - [ ] Import `SB3` Callbacks (e.g., `EvalCallback`, `CheckpointCallback`).
-    - [ ] Load and preprocess training data.
-    - [ ] Instantiate `TradingEnv` for training.
-    - [ ] (Optional) Wrap with `DummyVecEnv` for SB3 compatibility if not using multiple envs.
-    - [ ] Define `policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=DESIRED_FEATURES_DIM))`. Calculate `DESIRED_FEATURES_DIM` based on CNN output + 1.
-    - [ ] Hyperparameters for SAC (e.g., `learning_rate`, `buffer_size`, `batch_size`, `gamma`, `tau`, `train_freq`, `gradient_steps`, `learning_starts`).
-    - [ ] Instantiate SAC model: `model = SAC("MultiInputPolicy", train_env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./tb_logs/")`.
-    - [ ] (Optional) Set up `EvalCallback` using a separate validation instance of `TradingEnv`.
-    - [ ] Train the agent: `model.learn(total_timesteps=YOUR_TOTAL_TIMESTEPS, callback=eval_callback)`.
-    - [ ] Save the trained model: `model.save("sac_trader_model")`.
+
+✅ All steps for the training script are complete. The agent training pipeline is implemented and ready for use.
+
+    - [x] Import `TradingEnv`, `CustomCNN`, `SAC` from `stable_baselines3`.
+    - [x] Import `SB3` Callbacks (e.g., `EvalCallback`, `CheckpointCallback`).
+    - [x] Load and preprocess training data.
+    - [x] Instantiate `TradingEnv` for training.
+    - [x] (Optional) Wrap with `DummyVecEnv` for SB3 compatibility if not using multiple envs.
+    - [x] Define `policy_kwargs = dict(features_extractor_class=CustomCNN, features_extractor_kwargs=dict(features_dim=DESIRED_FEATURES_DIM))`. Calculate `DESIRED_FEATURES_DIM` based on CNN output + 1.
+    - [x] Hyperparameters for SAC (e.g., `learning_rate`, `buffer_size`, `batch_size`, `gamma`, `tau`, `train_freq`, `gradient_steps`, `learning_starts`).
+    - [x] Instantiate SAC model: `model = SAC("MultiInputPolicy", train_env, policy_kwargs=policy_kwargs, verbose=1, tensorboard_log="./tb_logs/")`.
+    - [x] (Optional) Set up `EvalCallback` using a separate validation instance of `TradingEnv`.
+    - [x] Train the agent: `model.learn(total_timesteps=YOUR_TOTAL_TIMESTEPS, callback=eval_callback)`.
+    - [x] Save the trained model: `model.save("sac_trader_model")`.
 
 ### 6. Evaluation Script (`evaluate_agent.py`)
     - [ ] Import `TradingEnv`, `SAC`, `CustomCNN`.
