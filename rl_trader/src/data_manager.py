@@ -144,9 +144,11 @@ if __name__ == '__main__':
     
     # Construct the path to the CSV file relative to this script
     # This script is in .../src/
-    # CSV is in .../ (two levels up from src, then into the root btc_rl folder)
+    # CSV is in .../ (one level up from rl_trader, not inside rl_trader)
     current_script_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(current_script_dir, '..', '..', 'BTC_hourly_with_features.csv')
+    rl_trader_dir = os.path.dirname(current_script_dir)  # .../rl_trader/
+    project_root = os.path.dirname(rl_trader_dir)        # .../btc_rl/
+    csv_path = os.path.join(project_root, 'BTC_hourly_with_features.csv')
     csv_path = os.path.normpath(csv_path) # Cleans up path (e.g. /../../)
 
     # IMPORTANT: Verify 'timestamp_column_in_your_csv' is the correct name

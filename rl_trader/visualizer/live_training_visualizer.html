@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Trader - Live Training Visualizer</title>
+    <!-- Chart.js via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@^2"></script> <!-- Moment.js for time formatting -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@^1"></script> <!-- Chart.js adapter for Moment.js -->
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1e1e1e; /* Dark background */
+            color: #e0e0e0; /* Light text */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 95%;
+            max-width: 1600px;
+            margin-top: 20px;
+            background-color: #2a2a2a; /* Slightly lighter dark for container */
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #444;
+        }
+        header h1 { margin: 0; color: #4CAF50; font-size: 2em; }
+        header p { margin-top: 5px; font-size: 0.9em; color: #aaa; }
+        .dashboard { display: grid; grid-template-columns: 3fr 1fr; gap: 20px; }
+
+        .chart-container { /* Changed from simple-chart-container */
+            width: 100%;
+            height: 500px;
+            background-color: #252525; /* Slightly different dark for chart bg */
+            border-radius: 6px;
+            position: relative;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .loading-chart {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); color: #ccc; font-size: 1.2em;
+        }
+        
+        .info-panel {
+            background-color: #333; padding: 15px; border-radius: 6px;
+            display: flex; flex-direction: column; gap: 12px;
+            max-height: 500px; overflow-y: auto;
+        }
+        .info-item {
+            background-color: #3c3c3c; padding: 10px; border-radius: 4px;
+            display: flex; justify-content: space-between; font-size: 0.95em;
+            border-left: 3px solid #4CAF50;
+        }
+        .info-item .label { color: #ccc; font-weight: 500; }
+        .info-item .value { color: #fff; font-weight: bold; }
+        .info-item .value.positive { color: #4CAF50; }
+        .info-item .value.negative { color: #F44336; }
+        .info-item .value.neutral { color: #FFC107; }
+        .status-bar {
+            margin-top: 20px; padding: 10px; background-color: #333;
+            border-radius: 6px; text-align: center; font-size: 0.9em;
+        }
+        .status-bar span { margin: 0 15px; }
+        #ws-status.connected { color: #4CAF50; }
+        #ws-status.disconnected { color: #F44336; }
+        .info-panel::-webkit-scrollbar { width: 8px; }
+        .info-panel::-webkit-scrollbar-track { background: #2a2a2a; border-radius: 4px; }
+        .info-panel::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        .info-panel::-webkit-scrollbar-thumb:hover { background: #666; }
+        .secondary-chart-container { /* Style for the new chart */
+            margin-top: 20px;
+            height: 400px; /* Increased height */
+            background-color: #252525;
+            border-radius: 6px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RL Trading Agent Visualizer</h1>
+            <p>Live view of the agent's training progress and decisions.</p>
+        </header>
+        <div class="dashboard">
+            <div class="chart-container"> <!-- Main chart -->
+                 <canvas id="liveChart"></canvas>
+                 <div class="loading-chart" id="loading-chart-text-main">Waiting for data...</div>
+            </div>
+            <div class="info-panel">
+                <!-- Info items remain the same -->
+                <div class="info-item"><span class="label">Simulated Time:</span><span class="value" id="sim-time">N/A</span></div>
+                <div class="info-item"><span class="label">Episode:</span><span class="value" id="episode-num">N/A</span></div>
+                <div class="info-item"><span class="label">Episode Step:</span><span class="value" id="episode-step">N/A</span></div>
+                <div class="info-item"><span class="label">Total Timesteps:</span><span class="value" id="total-timesteps">N/A</span></div>
+                <hr style="border-color: #444; width: 100%;">
+                <div class="info-item"><span class="label">Agent Equity:</span><span class="value" id="agent-equity">$0.00</span></div>
+                <div class="info-item"><span class="label">HODL Equity:</span><span class="value" id="hodl-equity">$0.00</span></div>
+                <div class="info-item"><span class="label">Cash Balance:</span><span class="value" id="cash-balance">$0.00</span></div>
+                <div class="info-item"><span class="label">BTC Held:</span><span class="value" id="btc-held">0.0000</span></div>
+                <div class="info-item"><span class="label">Position Value (BTC):</span><span class="value" id="position-value">$0.00</span></div>
+                <div class="info-item"><span class="label">Position Ratio:</span><span class="value" id="position-ratio">0.00%</span></div>
+                <hr style="border-color: #444; width: 100%;">
+                <div class="info-item"><span class="label">Last Action:</span><span class="value" id="last-action">N/A</span></div>
+                <div class="info-item"><span class="label">Last Reward:</span><span class="value" id="last-reward">0.00</span></div>
+                <div class="info-item"><span class="label">Fees Paid (Step):</span><span class="value" id="fees-paid">$0.00</span></div>
+            </div>
+        </div>
+        <!-- Secondary Chart for BTC Price -->
+        <div class="secondary-chart-container">
+            <canvas id="priceChart"></canvas>
+            <div class="loading-chart" id="loading-chart-text-price">Waiting for price data...</div>
+        </div>
+
+        <div class="status-bar">
+            <span>WebSocket Status: <span id="ws-status" class="disconnected">Disconnected</span></span>
+            <span>Last Message: <span id="last-message-time">N/A</span></span>
+        </div>
+    </div>
+
+    <script>
+        const loadingChartTextMainEl = document.getElementById('loading-chart-text-main');
+        const liveChartCanvas = document.getElementById('liveChart');
+        let liveChart = null; 
+
+        // --- NEW: Variables for Price Chart ---
+        const loadingChartTextPriceEl = document.getElementById('loading-chart-text-price');
+        const priceChartCanvas = document.getElementById('priceChart');
+        let priceChart = null;
+        // --- END NEW ---
+
+        const wsStatusEl = document.getElementById('ws-status');
+        const lastMessageTimeEl = document.getElementById('last-message-time');
+        // Info panel elements
+        const simTimeEl = document.getElementById('sim-time');
+        const episodeNumEl = document.getElementById('episode-num');
+        const episodeStepEl = document.getElementById('episode-step');
+        const totalTimestepsEl = document.getElementById('total-timesteps');
+        const agentEquityEl = document.getElementById('agent-equity');
+        const hodlEquityEl = document.getElementById('hodl-equity'); // <<< ADD THIS
+        const cashBalanceEl = document.getElementById('cash-balance');
+        const btcHeldEl = document.getElementById('btc-held');
+        const positionValueEl = document.getElementById('position-value');
+        const positionRatioEl = document.getElementById('position-ratio');
+        const lastActionEl = document.getElementById('last-action');
+        const lastRewardEl = document.getElementById('last-reward');
+        const feesPaidEl = document.getElementById('fees-paid');
+
+        const MAX_DATA_POINTS_ON_CHART = 200; // Keep chart performant
+        Chart.defaults.color = '#e0e0e0'; // Default text color for chart
+        Chart.defaults.borderColor = '#444'; // Default border color for chart elements
+
+        function initMainChartJs() { // Renamed from initChartJs
+            if (liveChart) return;
+            loadingChartTextMainEl.style.display = 'none';
+            const ctx = liveChartCanvas.getContext('2d');
+            liveChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Agent Equity',
+                            data: [],
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            yAxisID: 'yEquity', // Both will use this primary Y-axis
+                            pointRadius: 0,
+                            borderWidth: 2
+                        },
+                        {
+                            // --- MODIFIED DATASET ---
+                            label: 'HODL Equity', // Changed label
+                            data: [],             // Will store HODL equity values
+                            borderColor: 'rgb(255, 159, 64)', // Orange for HODL
+                            backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                            tension: 0.1,
+                            yAxisID: 'yEquity', // Both on the same equity scale
+                            pointRadius: 0,
+                            borderWidth: 2
+                            // --- END MODIFICATION ---
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', tooltipFormat: 'MMM D, YYYY h:mm a', displayFormats: { hour: 'MMM D, HH:mm'}},
+                            title: { display: true, text: 'Time' },
+                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+                        },
+                        yEquity: { // Single Y-axis for both Agent and HODL equity
+                            type: 'linear', position: 'left',
+                            title: { display: true, text: 'Equity ($)' },
+                            grid: { drawOnChartArea: true, color: 'rgba(255,255,255,0.05)'}
+                        }
+                        // yPrice scale removed from main chart options
+                    },
+                    plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } }
+                }
+            });
+            console.log("JS: Main Equity Chart.js initialized.");
+        }
+
+        // --- NEW: Function to initialize Price Chart ---
+        function initPriceChartJs() { // Now only Open price + markers
+            if (priceChart) return;
+            loadingChartTextPriceEl.style.display = 'none';
+            const ctx = priceChartCanvas.getContext('2d');
+
+            // --- Helper function to calculate radius based on trade amount ---
+            const MIN_MARKER_RADIUS = 4;
+            const MAX_MARKER_RADIUS = 12;
+            const TYPICAL_TRADE_AMOUNT_FOR_SCALING = 0.5; // Adjust as needed
+
+            function calculateRadius(context) {
+                const dataPoint = context.raw;
+                if (dataPoint && dataPoint.tradeAmount !== undefined) {
+                    const absAmount = Math.abs(dataPoint.tradeAmount);
+                    let scaledRadius = MIN_MARKER_RADIUS + (absAmount / TYPICAL_TRADE_AMOUNT_FOR_SCALING) * (MAX_MARKER_RADIUS - MIN_MARKER_RADIUS);
+                    return Math.max(MIN_MARKER_RADIUS, Math.min(MAX_MARKER_RADIUS, scaledRadius));
+                }
+                return MIN_MARKER_RADIUS;
+            }
+            // --- End Helper ---
+
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'BTC Price (Open)',
+                            data: [],
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            tension: 0.1,
+                            yAxisID: 'yPriceValue',
+                            pointRadius: 0,
+                            borderWidth: 2,
+                            order: 3
+                        },
+                        {
+                            label: 'Buy Signals',
+                            data: [],
+                            type: 'scatter',
+                            backgroundColor: 'rgba(75, 192, 75, 1)',
+                            borderColor: 'rgba(0, 100, 0, 1)',
+                            pointStyle: 'triangle',
+                            rotation: 0,
+                            radius: calculateRadius,
+                            hoverRadius: function(context) { return calculateRadius(context) + 2; },
+                            yAxisID: 'yPriceValue',
+                            order: 1
+                        },
+                        {
+                            label: 'Sell Signals',
+                            data: [],
+                            type: 'scatter',
+                            backgroundColor: 'rgba(255, 99, 132, 1)',
+                            borderColor: 'rgba(139, 0, 0, 1)',
+                            pointStyle: 'triangle',
+                            rotation: 180,
+                            radius: calculateRadius,
+                            hoverRadius: function(context) { return calculateRadius(context) + 2; },
+                            yAxisID: 'yPriceValue',
+                            order: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'hour', tooltipFormat: 'MMM D, YYYY h:mm a', displayFormats: { hour: 'MMM D, HH:mm'}},
+                            title: { display: false },
+                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+                        },
+                        yPriceValue: {
+                            type: 'linear', position: 'left',
+                            title: { display: true, text: 'BTC Price ($)' },
+                            grid: { drawOnChartArea: true, color: 'rgba(255,255,255,0.05)'}
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                filter: function(legendItem, chartData) {
+                                    return legendItem.datasetIndex === 0;
+                                }
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    if (context.dataset.type === 'scatter') {
+                                        if (context.dataset.label === 'Buy Signals') label = 'BUY';
+                                        if (context.dataset.label === 'Sell Signals') label = 'SELL';
+                                        label += ` @ ${context.parsed.y.toFixed(2)}`;
+                                        if (context.raw && context.raw.tradeAmount !== undefined) {
+                                            label += ` (${context.raw.tradeAmount.toFixed(4)} BTC)`;
+                                        }
+                                    } else {
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y.toFixed(2);
+                                        }
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            console.log("JS: BTC Price Chart.js initialized with SCRIPTABLE marker radius.");
+        }
+        // --- END NEW ---
+
+        function resetChartsForNewEpisode() { // Renamed to plural
+            if (liveChart) {
+                liveChart.destroy(); 
+                liveChart = null;    
+            }
+            if (priceChart) {
+                priceChart.destroy();
+                priceChart = null;
+            }
+            console.log("JS: All chart instances destroyed for new episode.");
+        }
+
+        function updateCharts(data) { // Now only Open price + markers for priceChart
+            if (!liveChart) { 
+                initMainChartJs(); 
+                if (!liveChart) { console.error("JS: CRITICAL - MainChart init failed."); return; }
+            }
+            if (!priceChart) {
+                initPriceChartJs();
+                if (!priceChart) { console.error("JS: CRITICAL - PriceChart init failed."); return; }
+            }
+
+            if (data.timestamp_str && (data.total_equity !== null) && (data.hodl_equity !== null) && 
+                (data.open_price !== null) && (data.trade_amount_btc !== null)) { // Require trade_amount_btc
+
+                const jsDateObject = new Date(data.timestamp_str);
+                if (isNaN(jsDateObject.getTime())) {
+                    console.error("JS: Chart - INVALID TIMESTAMP:", data.timestamp_str); return; 
+                }
+
+                const agentEquityVal = parseFloat(data.total_equity);
+                const hodlEquityVal = parseFloat(data.hodl_equity);
+                const btcOpenPriceVal = parseFloat(data.open_price);
+                const tradeAmountBtc = parseFloat(data.trade_amount_btc); // Get the trade amount
+
+                if (isNaN(agentEquityVal) || isNaN(hodlEquityVal) || isNaN(btcOpenPriceVal)) {
+                    console.error("JS: Chart - NaN value for equity, HODL, or open price."); return;
+                }
+
+                if (liveChart.data && liveChart.data.labels && liveChart.data.datasets.length === 2) {
+                    liveChart.data.labels.push(jsDateObject);
+                    liveChart.data.datasets[0].data.push(agentEquityVal); 
+                    liveChart.data.datasets[1].data.push(hodlEquityVal); 
+
+                    if (liveChart.data.labels.length > MAX_DATA_POINTS_ON_CHART) {
+                        liveChart.data.labels.shift();
+                        liveChart.data.datasets.forEach(dataset => { dataset.data.shift(); });
+                    }
+                    liveChart.update('none');
+                }
+
+                if (priceChart.data && priceChart.data.labels && priceChart.data.datasets.length === 3) { 
+                    priceChart.data.labels.push(jsDateObject);
+                    priceChart.data.datasets[0].data.push(btcOpenPriceVal);
+
+                    const tradeType = data.trade_type;
+                    if (!isNaN(tradeAmountBtc)) {
+                        if (tradeType === "BUY" && btcOpenPriceVal !== null) {
+                            priceChart.data.datasets[1].data.push({
+                                x: jsDateObject, 
+                                y: btcOpenPriceVal, 
+                                tradeAmount: tradeAmountBtc
+                            });
+                        } else if ((tradeType === "SELL" || tradeType === "SHORT" || tradeType === "REDUCE_LONG") && btcOpenPriceVal !== null) { 
+                            priceChart.data.datasets[2].data.push({
+                                x: jsDateObject, 
+                                y: btcOpenPriceVal, 
+                                tradeAmount: tradeAmountBtc
+                            });
+                        }
+                    }
+
+                    if (priceChart.data.labels.length > MAX_DATA_POINTS_ON_CHART) {
+                        priceChart.data.labels.shift(); 
+                        priceChart.data.datasets[0].data.shift();
+                        const firstLabelTime = priceChart.data.labels[0].getTime();
+                        for (let i = 1; i <= 2; i++) {
+                            priceChart.data.datasets[i].data = priceChart.data.datasets[i].data.filter(point => 
+                                (point.x && point.x instanceof Date) ? point.x.getTime() >= firstLabelTime : true
+                            );
+                        }
+                    }
+                    priceChart.update('none');
+                }
+            }
+        }
+
+        function updateInfoPanel(data) {
+            episodeNumEl.textContent = (data.episode_num !== null && typeof data.episode_num !== 'undefined') ? data.episode_num : (data.episode_number !== null && typeof data.episode_number !== 'undefined' ? data.episode_number : 'N/A');
+            totalTimestepsEl.textContent = (data.total_timesteps !== null && typeof data.total_timesteps !== 'undefined') ? data.total_timesteps.toLocaleString() : 'N/A';
+
+            if (data.type === "step_data") {
+                simTimeEl.textContent = data.timestamp_str ? new Date(data.timestamp_str).toLocaleString() : 'N/A';
+                episodeStepEl.textContent = data.episode_step !== null ? data.episode_step : 'N/A';
+                agentEquityEl.textContent = data.total_equity !== null ? `$${data.total_equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00';
+                hodlEquityEl.textContent = data.hodl_equity !== null ? `$${data.hodl_equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00';
+                cashBalanceEl.textContent = data.balance !== null ? `$${data.balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00';
+                btcHeldEl.textContent = data.btc_held !== null ? data.btc_held.toFixed(6) : '0.000000';
+                positionValueEl.textContent = data.current_position_value_btc !== null ? `$${data.current_position_value_btc.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00';
+                const posRatio = data.current_position_ratio !== null ? data.current_position_ratio * 100 : 0;
+                positionRatioEl.textContent = `${posRatio.toFixed(2)}%`;
+                positionRatioEl.className = 'value';
+                if (posRatio > 0) positionRatioEl.classList.add('positive');
+                else if (posRatio < 0) positionRatioEl.classList.add('negative');
+                const actionValue = data.action !== null ? data.action[0] : null;
+                if (actionValue !== null) {
+                    let actionText = `${(actionValue * 100).toFixed(1)}% `;
+                    if (actionValue > 0.01) actionText += "Long";
+                    else if (actionValue < -0.01) actionText += "Short";
+                    else actionText += "Flat";
+                    lastActionEl.textContent = actionText;
+                    lastActionEl.className = 'value';
+                    if (actionValue > 0.01) lastActionEl.classList.add('positive');
+                    else if (actionValue < -0.01) lastActionEl.classList.add('negative');
+                    else lastActionEl.classList.add('neutral');
+                } else {
+                    lastActionEl.textContent = 'N/A';
+                    lastActionEl.className = 'value';
+                }
+                const reward = data.reward !== null ? data.reward : 0;
+                lastRewardEl.textContent = reward.toFixed(4);
+                lastRewardEl.className = 'value';
+                if (reward > 0) lastRewardEl.classList.add('positive');
+                else if (reward < 0) lastRewardEl.classList.add('negative');
+                feesPaidEl.textContent = data.fees_paid_this_step !== null ? `$${data.fees_paid_this_step.toFixed(4)}` : '$0.00';
+            } else if (data.type === "episode_reset") {
+                simTimeEl.textContent = 'N/A (New Episode)';
+                episodeStepEl.textContent = '0';
+                agentEquityEl.textContent = `$${(10000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                hodlEquityEl.textContent = `$${(10000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; // Assuming HODL also starts at 10000
+                cashBalanceEl.textContent = `$${(10000).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                btcHeldEl.textContent = '0.000000';
+                positionValueEl.textContent = '$0.00';
+                positionRatioEl.textContent = '0.00%';
+                positionRatioEl.className = 'value';
+                lastActionEl.textContent = 'N/A';
+                lastActionEl.className = 'value';
+                lastRewardEl.textContent = '0.00';
+                lastRewardEl.className = 'value';
+                feesPaidEl.textContent = '$0.00';
+            }
+        }
+
+        function connectWebSocket() {
+            const socket = new WebSocket("ws://localhost:8765");
+
+            socket.onopen = function(e) {
+                console.log("[open] Connection established");
+                wsStatusEl.textContent = "Connected";
+                wsStatusEl.className = "connected";
+                loadingChartTextMainEl.style.display = 'none'; 
+                loadingChartTextPriceEl.style.display = 'none'; // Hide loading for price chart too
+                if (!liveChart) initMainChartJs(); 
+                if (!priceChart) initPriceChartJs(); // Init price chart
+            };
+
+            socket.onmessage = function(event) {
+                lastMessageTimeEl.textContent = new Date().toLocaleTimeString();
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === "step_data") {
+                        updateCharts(message); // Call the new plural function
+                        updateInfoPanel(message);
+                    } else if (message.type === "episode_reset") {
+                        console.log("Received episode_reset:", message);
+                        updateInfoPanel(message); 
+                        resetChartsForNewEpisode(); // Call the new plural function
+                    }
+                } catch (error) {
+                    console.error("Error processing message:", error, "Raw data was:", event.data);
+                }
+            };
+
+            socket.onclose = function(event) {
+                wsStatusEl.textContent = "Disconnected";
+                wsStatusEl.className = "disconnected";
+                if (event.wasClean) {
+                    console.log(`[close] Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                } else {
+                    console.log('[close] Connection died');
+                }
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            socket.onerror = function(error) {
+                console.error(`[error] ${error.message}`);
+            };
+        }
+        
+        window.addEventListener('resize', () => {
+            if (liveChart) { liveChart.resize(); }
+            if (priceChart) { priceChart.resize(); } // Resize price chart too
+        });
+
+        connectWebSocket();
+    </script>
+</body>
+</html>

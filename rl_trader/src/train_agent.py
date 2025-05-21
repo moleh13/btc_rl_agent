@@ -2,6 +2,7 @@
 
 import os
 import pandas as pd
+import argparse  # For command line arguments
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, StopTrainingOnNoModelImprovement
@@ -11,6 +12,7 @@ from stable_baselines3.common.monitor import Monitor # To wrap env for logging e
 from data_manager import load_and_preprocess_data, EXPECTED_FEATURE_COLUMNS
 from trading_env import TradingEnv
 from custom_cnn import CustomCNN
+from visualization_callback import VisualizationCallback  # For live visualization
 
 # --- Configuration ---
 DATA_CSV_PATH = 'BTC_hourly_with_features.csv' # Relative to train_agent.py
@@ -55,6 +57,15 @@ os.makedirs(CHECKPOINT_SAVE_PATH, exist_ok=True)
 
 
 def main():
+    # --- Argument Parsing for Visualization ---
+    parser = argparse.ArgumentParser(description="Train a Deep RL Trading Agent.")
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Enable live training visualization via WebSocket."
+    )
+    args = parser.parse_args()
+
     # --- 1. Load and Preprocess Data ---
     print("Loading and preprocessing data...")
     # Adjust path relative to where train_agent.py is located
@@ -119,6 +130,8 @@ def main():
 
     # --- 5. Setup Callbacks ---
     print("Setting up callbacks...")
+    # Initialize a list to hold all callbacks
+    active_callbacks = []
     # Stop training if there is no improvement after N evaluations
     stop_train_callback = StopTrainingOnNoModelImprovement(
         max_no_improvement_evals=PATIENCE_FOR_NO_IMPROVEMENT,
@@ -137,6 +150,7 @@ def main():
         render=False,
         callback_after_eval=stop_train_callback # Trigger stop_train_callback after each eval
     )
+    active_callbacks.append(eval_callback)
 
     # Save checkpoints periodically
     checkpoint_callback = CheckpointCallback(
@@ -144,6 +158,14 @@ def main():
         save_path=CHECKPOINT_SAVE_PATH,
         name_prefix="sac_trader_ckpt"
     )
+    active_callbacks.append(checkpoint_callback)
+
+    # Conditionally add VisualizationCallback
+    vis_callback_instance = None
+    if args.visualize:
+        print("Live visualization enabled. Initializing VisualizationCallback...")
+        vis_callback_instance = VisualizationCallback(server_host="localhost", server_port=8765, verbose=1)
+        active_callbacks.append(vis_callback_instance)
     print("Callbacks configured.")
 
 
@@ -171,17 +193,35 @@ def main():
 
     # --- 7. Train the Agent ---
     print(f"Starting training for {TOTAL_TIMESTEPS} timesteps...")
+    vis_callback_instance_for_shutdown = None
+    if args.visualize:
+        for cb in active_callbacks:
+            if isinstance(cb, VisualizationCallback):
+                vis_callback_instance_for_shutdown = cb
+                break
     try:
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
-            callback=[eval_callback, checkpoint_callback], # Pass list of callbacks
+            callback=active_callbacks, # Pass the list of active callbacks
             log_interval=1 # Log training stats every N episodes (adjust as needed for train_monitor.csv)
                            # For SAC, log_interval is usually per episode for Monitor wrapper.
         )
     except KeyboardInterrupt:
         print("Training interrupted by user.")
     finally:
-        # --- 8. Save the Final Model ---
+        # SB3 should call _on_training_end of callbacks on normal exit or KeyboardInterrupt.
+        # If vis_callback_instance_for_shutdown is not None and its server is still running,
+        # it implies something went wrong with SB3's callback handling or an unhandled exception occurred before _on_training_end.
+        # For extra safety, one *could* add an explicit stop here, but it's usually handled by SB3.
+        if vis_callback_instance_for_shutdown and \
+           hasattr(vis_callback_instance_for_shutdown, 'server') and \
+           vis_callback_instance_for_shutdown.server and \
+           hasattr(vis_callback_instance_for_shutdown.server, 'server_thread') and \
+           vis_callback_instance_for_shutdown.server.server_thread and \
+           vis_callback_instance_for_shutdown.server.server_thread.is_alive():
+            print("Explicitly stopping visualization server in finally block (might be redundant if SB3 handled it).")
+            vis_callback_instance_for_shutdown.server.stop()
+        # Save the Final Model
         final_model_path = os.path.join(MODEL_SAVE_PATH, "sac_trader_final.zip")
         print(f"Saving final model to {final_model_path}")
         model.save(final_model_path)
