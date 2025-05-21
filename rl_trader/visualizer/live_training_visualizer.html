@@ -83,7 +83,7 @@
         .info-panel::-webkit-scrollbar-thumb:hover { background: #666; }
         .secondary-chart-container { /* Style for the new chart */
             margin-top: 20px;
-            height: 400px; /* Increased height */
+            height: 550px; /* Increased height for a taller price chart */
             background-color: #252525;
             border-radius: 6px;
             padding: 10px;
@@ -226,22 +226,6 @@
             loadingChartTextPriceEl.style.display = 'none';
             const ctx = priceChartCanvas.getContext('2d');
 
-            // --- Helper function to calculate radius based on trade amount ---
-            const MIN_MARKER_RADIUS = 4;
-            const MAX_MARKER_RADIUS = 12;
-            const TYPICAL_TRADE_AMOUNT_FOR_SCALING = 0.5; // Adjust as needed
-
-            function calculateRadius(context) {
-                const dataPoint = context.raw;
-                if (dataPoint && dataPoint.tradeAmount !== undefined) {
-                    const absAmount = Math.abs(dataPoint.tradeAmount);
-                    let scaledRadius = MIN_MARKER_RADIUS + (absAmount / TYPICAL_TRADE_AMOUNT_FOR_SCALING) * (MAX_MARKER_RADIUS - MIN_MARKER_RADIUS);
-                    return Math.max(MIN_MARKER_RADIUS, Math.min(MAX_MARKER_RADIUS, scaledRadius));
-                }
-                return MIN_MARKER_RADIUS;
-            }
-            // --- End Helper ---
-
             priceChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -266,8 +250,8 @@
                             borderColor: 'rgba(0, 100, 0, 1)',
                             pointStyle: 'triangle',
                             rotation: 0,
-                            radius: calculateRadius,
-                            hoverRadius: function(context) { return calculateRadius(context) + 2; },
+                            radius: 5, // Fixed small radius
+                            hoverRadius: 7, // Slightly larger on hover
                             yAxisID: 'yPriceValue',
                             order: 1
                         },
@@ -279,8 +263,8 @@
                             borderColor: 'rgba(139, 0, 0, 1)',
                             pointStyle: 'triangle',
                             rotation: 180,
-                            radius: calculateRadius,
-                            hoverRadius: function(context) { return calculateRadius(context) + 2; },
+                            radius: 5, // Fixed small radius
+                            hoverRadius: 7, // Slightly larger on hover
                             yAxisID: 'yPriceValue',
                             order: 2
                         }
@@ -335,7 +319,7 @@
                     }
                 }
             });
-            console.log("JS: BTC Price Chart.js initialized with SCRIPTABLE marker radius.");
+            console.log("JS: BTC Price Chart.js initialized with fixed marker radius.");
         }
         // --- END NEW ---
 
