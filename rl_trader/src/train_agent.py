@@ -35,10 +35,10 @@ GRADIENT_STEPS = 1 # How many gradient steps to do after each rollout
 LEARNING_STARTS = 1000 # Number of steps to collect experience before training starts
 
 # Callback configurations
-EVAL_FREQ = int(5000 / (EPISODE_LENGTH if EPISODE_LENGTH > 0 else 1)) # Evaluate every N * num_envs steps
+EVAL_FREQ = 10000 # Evaluate every 10,000 environment steps (not episodes)
 # Ensure eval_freq is at least 1, considering num_envs which is 1 here
 EVAL_FREQ = max(1, EVAL_FREQ)
-N_EVAL_EPISODES = 3 # Number of episodes to run for evaluation
+N_EVAL_EPISODES = 5 # Number of episodes to run for evaluation
 PATIENCE_FOR_NO_IMPROVEMENT = 10 # Number of evaluations to wait before stopping if no improvement
 
 # Paths for saving models and logs

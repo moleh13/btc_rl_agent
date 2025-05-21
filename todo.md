@@ -130,9 +130,6 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
 ## Phase 2: Agent Training & Evaluation
 
 ### 5. Training Script (`train_agent.py`)
-
-✅ All steps for the training script are complete. The agent training pipeline is implemented and ready for use.
-
     - [x] Import `TradingEnv`, `CustomCNN`, `SAC` from `stable_baselines3`.
     - [x] Import `SB3` Callbacks (e.g., `EvalCallback`, `CheckpointCallback`).
     - [x] Load and preprocess training data.
