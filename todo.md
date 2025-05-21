@@ -18,10 +18,10 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
     - [x] Create a `requirements.txt` file.
 
 ### 2. Data Loading and Preprocessing (`src/data_manager.py` or similar)
-    - [ ] **Load Raw Data:**
-        - [ ] Function to load the BTC hourly CSV data into a pandas DataFrame.
-    - [ ] **Feature Engineering:**
-        - [ ] Function to calculate/verify all 33 specified features:
+    - [x] **Load Raw Data:**
+        - [x] Function to load the BTC hourly CSV data into a pandas DataFrame.
+    - [x] **Feature Engineering:**
+        - [x] Function to calculate/verify all 33 specified features:
             - `log_returns`
             - `volatility_30_period`
             - `RSI14`
@@ -36,22 +36,22 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
             - `VWAP`
             - `ROC10`
             - `Hour_of_Day, Day_of_Week, Day_of_Month, Month_of_Year, Week_of_Year`
-    - [ ] **Data Splitting:**
-        - [ ] Function to split the full DataFrame into:
+    - [x] **Data Splitting:**
+        - [x] Function to split the full DataFrame into:
             - Training set: `2017-08-27 13:00:00` to `2023-12-31 23:00:00`
             - Testing set: `2024-01-01 00:00:00` to `2024-12-31 23:00:00`
-    - [ ] Save preprocessed data if needed (or preprocess on-the-fly in the environment).
+    - [x] Save preprocessed data if needed (or preprocess on-the-fly in the environment).
 
 ### 3. Custom Trading Environment (`src/trading_env.py`)
-    - [ ] Create `TradingEnv` class inheriting from `gymnasium.Env`.
-    - [ ] **`__init__(self, df, initial_balance, window_size, episode_length, fee_rate, ...) `:**
-        - [ ] Store DataFrame, initial balance ($10,000), fee (0.075%), lookback window size (100), episode length (30 days = 720 steps).
-        - [ ] Define `action_space` (continuous, `Box(-1.0, 1.0, shape=(1,), dtype=np.float32)`).
-        - [ ] Define `observation_space` (dictionary space: `market_data`: `Box` for 100x33, `position_ratio`: `Box` for 1 value).
-    - [ ] **`reset(self, seed=None, options=None)`:**
-        - [ ] If training mode: Randomly select a start index for a 30-day (+100 steps for initial window) segment from the training data.
-        - [ ] If testing mode (pass a flag or use a separate env instance): Iterate sequentially through test data.
-        - [ ] Initialize/reset:
+    - [x] Create `TradingEnv` class inheriting from `gymnasium.Env`.
+    - [x] **`__init__(self, df, initial_balance, window_size, episode_length, fee_rate, ...) `:**
+        - [x] Store DataFrame, initial balance ($10,000), fee (0.075%), lookback window size (100), episode length (30 days = 720 steps).
+        - [x] Define `action_space` (continuous, `Box(-1.0, 1.0, shape=(1,), dtype=np.float32)`).
+        - [x] Define `observation_space` (dictionary space: `market_data`: `Box` for 100x33, `position_ratio`: `Box` for 1 value).
+    - [x] **`reset(self, seed=None, options=None)`:**
+        - [x] If training mode: Randomly select a start index for a 30-day (+100 steps for initial window) segment from the training data.
+        - [x] If testing mode (pass a flag or use a separate env instance): Iterate sequentially through test data.
+        - [x] Initialize/reset:
             - `current_step` (relative to the start of the episode segment).
             - `balance` (to initial balance).
             - `btc_held` (to 0).
@@ -59,78 +59,73 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
             - `total_equity` (to balance).
             - `current_position_ratio` (0.0).
             - History of equity for plotting/info.
-        - [ ] Return `self._get_observation()`, `self._get_info()`.
-    - [ ] **`_get_observation(self)`:**
-        - [ ] Get the 100-step window of market data ending at `self.current_step -1`.
-        - [ ] **Normalization:**
-            - Apply Z-score normalization to specified price/volume-based columns *within this 100-step window*.
-            - Keep other indicator values as-is.
-        - [ ] Return a dictionary: `{"market_data": normalized_window_data, "position_ratio": self.current_position_ratio}`.
-    - [ ] **`_take_action(self, action)`:**
-        - [ ] `action_value = action[0]` (target fraction of equity, from -1.0 to 1.0).
-        - [ ] `current_price = self.df.loc[self.df.index[self.current_step], 'open']` (trade at next open).
-        - [ ] Calculate `target_position_value = action_value * self.total_equity`.
-        - [ ] Calculate `current_position_value_at_trade_price = self.btc_held * current_price`.
-        - [ ] Calculate `trade_value = target_position_value - current_position_value_at_trade_price`.
-        - [ ] Calculate `trade_amount_btc = trade_value / current_price`.
-        - [ ] Calculate `fees = abs(trade_value) * self.fee_rate`.
-        - [ ] **Execution Logic & Constraints:**
-            - If buying: `cost = trade_value + fees`. If `cost > self.balance`, clip `trade_value` so `cost <= self.balance`. Recalculate `trade_amount_btc`.
-            - If selling (reducing long or increasing short): `proceeds = abs(trade_value) - fees`.
-            - If shorting (or increasing short): Ensure `abs(target_position_value)` after fees doesn't exceed `self.total_equity` (1x leverage). This might require clipping `trade_value` if the requested short is too large relative to cash available to cover potential losses or if the fee makes it impossible. For 1.0x leverage, this basically means total short exposure cannot exceed total equity.
-            - The amount of BTC to trade is `trade_amount_btc`.
-        - [ ] Update `self.btc_held += trade_amount_btc`.
-        - [ ] Update `self.balance -= (trade_amount_btc * current_price) + fees`.
-        - [ ] Update `self.current_position_value = self.btc_held * current_price`.
-    - [ ] **`step(self, action)`:**
-        - [ ] `previous_total_equity = self.total_equity`.
-        - [ ] Call `self._take_action(action)`.
-        - [ ] Update PnL:
+        - [x] Return `self._get_observation()`, `self._get_info()`.
+    - [x] **`_get_observation(self)`:**
+        - [x] Get the 100-step window of market data ending at `self.current_step -1`.
+        - [x] **Normalization:**
+            - [x] Apply Z-score normalization to specified price/volume-based columns *within this 100-step window*.
+            - [x] Keep other indicator values as-is.
+        - [x] Return a dictionary: `{"market_data": normalized_window_data, "position_ratio": self.current_position_ratio}`.
+    - [x] **`_take_action(self, action)`:**
+        - [x] `action_value = action[0]` (target fraction of equity, from -1.0 to 1.0).
+        - [x] `current_price = self.df.loc[self.df.index[self.current_step], 'open']` (trade at next open).
+        - [x] Calculate `target_position_value = action_value * self.total_equity`.
+        - [x] Calculate `current_position_value_at_trade_price = self.btc_held * current_price`.
+        - [x] Calculate `trade_value = target_position_value - current_position_value_at_trade_price`.
+        - [x] Calculate `trade_amount_btc = trade_value / current_price`.
+        - [x] Calculate `fees = abs(trade_value) * self.fee_rate`.
+        - [x] **Execution Logic & Constraints:**
+            - [x] If buying: `cost = trade_value + fees`. If `cost > self.balance`, clip `trade_value` so `cost <= self.balance`. Recalculate `trade_amount_btc`.
+            - [x] If selling (reducing long or increasing short): `proceeds = abs(trade_value) - fees`.
+            - [x] If shorting (or increasing short): Ensure `abs(target_position_value)` after fees doesn't exceed `self.total_equity` (1x leverage). This might require clipping `trade_value` if the requested short is too large relative to cash available to cover potential losses or if the fee makes it impossible. For 1.0x leverage, this basically means total short exposure cannot exceed total equity.
+            - [x] The amount of BTC to trade is `trade_amount_btc`.
+        - [x] Update `self.btc_held += trade_amount_btc`.
+        - [x] Update `self.balance -= (trade_amount_btc * current_price) + fees`.
+        - [x] Update `self.current_position_value = self.btc_held * current_price`.
+    - [x] **`step(self, action)`:**
+        - [x] `previous_total_equity = self.total_equity`.
+        - [x] Call `self._take_action(action)`.
+        - [x] Update PnL:
             - `current_price_at_step_close = self.df.loc[self.df.index[self.current_step], 'close']` (or next open for consistency if agent holds for full bar). For calculating returns of step `t`, we usually use price at `t+1` vs price at `t`. If agent acts at open of `t`, then its position changes based on `open_t` to `open_{t+1}`.
             - `self.current_position_value = self.btc_held * current_price_at_step_close` (or `open_{t+1}`).
             - `self.total_equity = self.balance + self.current_position_value`.
             - `self.current_position_ratio = self.current_position_value / self.total_equity` if `self.total_equity > 0` else 0.
-        - [ ] Calculate `agent_log_return = np.log(self.total_equity / previous_total_equity)` (handle division by zero if `previous_total_equity` is 0).
-        - [ ] Calculate `hodl_price_t = self.df.loc[self.df.index[self.current_step], 'open']`.
-        - [ ] Calculate `hodl_price_t_plus_1 = self.df.loc[self.df.index[self.current_step + 1], 'open']`.
-        - [ ] Calculate `hodl_log_return = np.log(hodl_price_t_plus_1 / hodl_price_t)`.
-        - [ ] `reward = 100 * (agent_log_return - hodl_log_return)`.
-        - [ ] `self.current_step += 1`.
-        - [ ] **Termination Conditions:**
+        - [x] Calculate `agent_log_return = np.log(self.total_equity / previous_total_equity)` (handle division by zero if `previous_total_equity` is 0).
+        - [x] Calculate `hodl_price_t = self.df.loc[self.df.index[self.current_step], 'open']`.
+        - [x] Calculate `hodl_price_t_plus_1 = self.df.loc[self.df.index[self.current_step + 1], 'open']`.
+        - [x] Calculate `hodl_log_return = np.log(hodl_price_t_plus_1 / hodl_price_t)`.
+        - [x] `reward = 100 * (agent_log_return - hodl_log_return)`.
+        - [x] `self.current_step += 1`.
+        - [x] **Termination Conditions:**
             - `terminated = self.total_equity <= (self.initial_balance / 2)`.
             - If `terminated`, `reward -= 100`.
             - `truncated = self.current_step >= (self.start_step_in_df + self.episode_length -1)`. (Check indices carefully)
-        - [ ] `observation = self._get_observation()`.
-        - [ ] `info = self._get_info()`.
-        - [ ] Return `observation, reward, terminated, truncated, info`.
-    - [ ] **`_get_info(self)`:**
-        - [ ] Return dictionary with `total_equity`, `btc_held`, `balance`, `current_position_value`, etc. for logging.
-    - [ ] **`render(self, mode='human')` (Optional):**
-        - [ ] Simple printout of current status or for future plotting.
-    - [ ] **`close(self)`:**
-        - [ ] Cleanup if any.
-    - [ ] Test environment with `stable_baselines3.common.env_checker.check_env`.
+        - [x] `observation = self._get_observation()`.
+        - [x] `info = self._get_info()`.
+        - [x] Return `observation, reward, terminated, truncated, info`.
+    - [x] **`_get_info(self)`:**
+        - [x] Return dictionary with `total_equity`, `btc_held`, `balance`, `current_position_value`, etc. for logging.
+    - [x] **`render(self, mode='human')` (Optional):**
+        - [x] Simple printout of current status or for future plotting.
+    - [x] **`close(self)`:**
+        - [x] Cleanup if any.
+    - [x] Test environment with `stable_baselines3.common.env_checker.check_env`.
 
 ### 4. Custom CNN Feature Extractor (`src/custom_cnn.py`)
-    - [ ] Create `CustomCNN` class inheriting from `stable_baselines3.common.torch_layers.BaseFeaturesExtractor`.
-    - [ ] **`__init__(self, observation_space: gymnasium.spaces.Dict, features_dim: int = 128)`:**
-        - [ ] `super().__init__(observation_space, features_dim)`.
-        - [ ] Extract `market_data_shape` and `position_ratio_shape` from `observation_space`.
-        - [ ] Define CNN layers (e.g., 2 `Conv1D` layers with ReLU, then `Flatten`).
-            - `nn.Conv1d(in_channels=33, out_channels=64, kernel_size=5, padding='causal')`
-            - `nn.ReLU()`
-            - `nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, padding='causal')`
-            - `nn.ReLU()`
-            - `nn.Flatten()`
-        - [ ] Calculate the size of the flattened CNN output.
-        - [ ] The final combined feature dimension will be `cnn_output_flat_size + position_ratio_shape[0]`.
-        - [ ] Define a linear layer `self.linear` to project this combined feature vector to `features_dim` if needed, or ensure `features_dim` matches `cnn_output_flat_size + position_ratio_shape[0]`. (SB3 might handle this projection automatically if the output of `forward` doesn't match `features_dim`, but explicit control is better). *Correction*: `features_dim` is the dimension *output by this extractor*. So the CNN output + position ratio should be projected to `features_dim` by an MLP if needed, or SB3 assumes the output of `forward` IS the feature vector of size `features_dim`. Let's design it so `features_dim = cnn_output_flat_size + 1`.
-    - [ ] **`forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:`:**
-        - [ ] Extract `market_data_tensor` and `position_ratio_tensor` from `observations`.
-        - [ ] Permute `market_data_tensor` if needed for Conv1D (e.g., `(batch, channels, seq_len)`). Input is (batch, seq_len, channels), so permute to (batch, channels, seq_len).
-        - [ ] Pass `market_data_tensor` through CNN layers.
-        - [ ] Concatenate flattened CNN output with `position_ratio_tensor`.
-        - [ ] Return the combined tensor.
+    - [x] Create `CustomCNN` class inheriting from `stable_baselines3.common.torch_layers.BaseFeaturesExtractor`.
+    - [x] **`__init__(self, observation_space: gymnasium.spaces.Dict, features_dim: int = 128)`:**
+        - [x] `super().__init__(observation_space, features_dim)`.
+        - [x] Extract `market_data_shape` and `position_ratio_shape` from `observation_space`.
+        - [x] Define CNN layers (e.g., 2 `Conv1D` layers with ReLU, then `Flatten`).
+        - [x] Calculate the size of the flattened CNN output.
+        - [x] The final combined feature dimension will be `cnn_output_flat_size + position_ratio_shape[0]`.
+        - [x] Define a linear layer `self.linear` to project this combined feature vector to `features_dim` if needed, or ensure `features_dim` matches `cnn_output_flat_size + position_ratio_shape[0]`.
+    - [x] **`forward(self, observations: Dict[str, th.Tensor]) -> th.Tensor:`:**
+        - [x] Extract `market_data_tensor` and `position_ratio_tensor` from `observations`.
+        - [x] Permute `market_data_tensor` if needed for Conv1D (e.g., `(batch, channels, seq_len)`).
+        - [x] Pass `market_data_tensor` through CNN layers.
+        - [x] Concatenate flattened CNN output with `position_ratio_tensor`.
+        - [x] Return the combined tensor.
 
 ## Phase 2: Agent Training & Evaluation
 
