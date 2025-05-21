@@ -5,17 +5,17 @@ This document outlines the steps to create the Deep Reinforcement Learning Trade
 ## Phase 1: Project Setup & Core Components
 
 ### 1. Project Initialization & Dependencies
-    - [ ] Create project directory structure (e.g., `rl_trader/`, `rl_trader/data/`, `rl_trader/src/`, `rl_trader/models/`, `rl_trader/results/`).
-    - [ ] Set up a Python virtual environment (e.g., using `venv` or `conda`).
-    - [ ] Install necessary libraries:
-        - [ ] `pandas` (for data manipulation)
-        - [ ] `numpy` (for numerical operations)
-        - [ ] `scikit-learn` (for Z-score normalization, if not implemented manually)
-        - [ ] `matplotlib` (for plotting results)
-        - [ ] `gymnasium` (for creating the custom environment, replaces `gym`)
-        - [ ] `torch` (PyTorch, the backend for Stable Baselines3)
-        - [ ] `stable-baselines3[extra]` (for DRL algorithms like SAC and utilities)
-    - [ ] Create a `requirements.txt` file.
+    - [x] Create project directory structure (e.g., `rl_trader/`, `rl_trader/data/`, `rl_trader/src/`, `rl_trader/models/`, `rl_trader/results/`).
+    - [x] Set up a Python virtual environment (e.g., using `venv` or `conda`).
+    - [x] Install necessary libraries:
+        - [x] `pandas` (for data manipulation)
+        - [x] `numpy` (for numerical operations)
+        - [x] `scikit-learn` (for Z-score normalization, if not implemented manually)
+        - [x] `matplotlib` (for plotting results)
+        - [x] `gymnasium` (for creating the custom environment, replaces `gym`)
+        - [x] `torch` (PyTorch, the backend for Stable Baselines3)
+        - [x] `stable-baselines3[extra]` (for DRL algorithms like SAC and utilities)
+    - [x] Create a `requirements.txt` file.
 
 ### 2. Data Loading and Preprocessing (`src/data_manager.py` or similar)
     - [ ] **Load Raw Data:**
