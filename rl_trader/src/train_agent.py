@@ -26,7 +26,7 @@ FEE_RATE = 0.00075
 
 # SAC & Training Hyperparameters
 MODEL_FEATURES_DIM = 256 # Output dimension of CustomCNN
-TOTAL_TIMESTEPS = 200_000 # Adjust as needed (start small, e.g., 50k, 100k)
+TOTAL_TIMESTEPS = 1_000_000 # Adjust as needed (start small, e.g., 50k, 100k)
 LEARNING_RATE = 3e-4 # 0.0003, common default for SAC
 BUFFER_SIZE = 100_000 # Size of replay buffer
 BATCH_SIZE = 256
@@ -34,7 +34,7 @@ GAMMA = 0.99 # Discount factor
 TAU = 0.005 # Soft update coefficient
 TRAIN_FREQ = (1, "step") # Train every 1 environment step
 GRADIENT_STEPS = 1 # How many gradient steps to do after each rollout
-LEARNING_STARTS = 1000 # Number of steps to collect experience before training starts
+LEARNING_STARTS = 10_000 # Number of steps to collect experience before training starts
 
 # Callback configurations
 EVAL_FREQ = 10000 # Evaluate every 10,000 environment steps (not episodes)
@@ -97,7 +97,10 @@ def main():
         initial_balance=INITIAL_BALANCE,
         episode_length=EPISODE_LENGTH,
         fee_rate=FEE_RATE,
-        is_training=True
+        is_training=True,
+        reward_scale_factor=100.0, # Default, can be changed
+        fee_penalty_factor=1.0,    # Explicitly set or tuned
+        action_change_penalty_factor=0.01 # Explicitly set or tuned
     )
     # Wrap with Monitor for episode stats (rewards, lengths) for TensorBoard
     train_env_monitored = Monitor(train_env_raw, filename=os.path.join(LOG_DIR, "train_monitor.csv"))
@@ -115,7 +118,10 @@ def main():
         initial_balance=INITIAL_BALANCE,
         episode_length=EPISODE_LENGTH, # Or test_df length for full test run
         fee_rate=FEE_RATE,
-        is_training=False # Crucial: ensures sequential processing of test data
+        is_training=False, # Crucial: ensures sequential processing of test data
+        reward_scale_factor=100.0,
+        fee_penalty_factor=1.0,    # Keep consistent or use different for eval if intended
+        action_change_penalty_factor=0.01 # Keep consistent
     )
     eval_env_monitored = Monitor(eval_env_raw, filename=os.path.join(LOG_DIR, "eval_monitor.csv"))
     eval_env = DummyVecEnv([lambda: eval_env_monitored])

@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import traceback # Added for detailed error logging
 from stable_baselines3 import SAC
+import joblib
 
 # Import custom modules
 from data_manager import load_and_preprocess_data, EXPECTED_FEATURE_COLUMNS
@@ -17,6 +18,7 @@ DATA_CSV_PATH = '../../BTC_hourly_with_features.csv' # Corrected path to the CSV
 DATE_COLUMN_NAME = 'timestamp'
 MODEL_PATH = "./models/best_sac_trader/best_model.zip" # Path to the trained model
 # Or use: MODEL_PATH = "./models/sac_trader_final.zip"
+SCALER_PATH = os.path.join(os.path.dirname(__file__), "..", "artifacts", "price_scaler.pkl")
 
 # Environment Hyperparameters (should match training, but some can be different for eval)
 WINDOW_SIZE = 100
@@ -70,6 +72,13 @@ def main():
         expected_features=EXPECTED_FEATURE_COLUMNS
     )
     print(f"Test data shape: {test_df_full.shape}")
+
+    # --- Load and apply scaler fitted on train ---
+    if not os.path.exists(SCALER_PATH):
+        raise FileNotFoundError(f"Scaler not found at {SCALER_PATH}. Run training first.")
+    scaler = joblib.load(SCALER_PATH)
+    test_df_full[feature_cols] = scaler.transform(test_df_full[feature_cols])
+    print(f"Scaler loaded from {SCALER_PATH} and applied to test data.")
 
     if test_df_full.empty:
         print("Error: Test data is empty. Exiting.") # Restored line

@@ -103,7 +103,8 @@ class VisualizationCallback(BaseCallback):
             "hodl_equity": infos.get("hodl_equity", None), # Explicitly include hodl_equity
             "fees_paid_this_step": infos.get("fees_paid_this_step", 0.0), # Add this to TradingEnv info
             "trade_type": infos.get("trade_type_this_step", "NONE"),             # <<< NEW FIELD
-            "trade_amount_btc": infos.get("trade_amount_btc_this_step", 0.0)   # <<< NEW FIELD
+            "trade_amount_btc": infos.get("trade_amount_btc_this_step", 0.0),   # <<< NEW FIELD
+            "dones": bool(dones) # <--- Add this flag
         }
         
         self.server.broadcast_data(step_data)

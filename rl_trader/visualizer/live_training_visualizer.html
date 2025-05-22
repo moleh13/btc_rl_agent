@@ -70,6 +70,13 @@
         .info-item .value.positive { color: #4CAF50; }
         .info-item .value.negative { color: #F44336; }
         .info-item .value.neutral { color: #FFC107; }
+        .win-counter {
+            background-color: #3c3c3c; padding: 10px; border-radius: 4px;
+            display: flex; justify-content: space-between; font-size: 0.95em;
+            border-left: 3px solid #4CAF50;
+        }
+        .win-counter .label { color: #ccc; font-weight: 500; }
+        .win-counter .value { color: #fff; font-weight: bold; }
         .status-bar {
             margin-top: 20px; padding: 10px; background-color: #333;
             border-radius: 6px; text-align: center; font-size: 0.9em;
@@ -89,6 +96,13 @@
             padding: 10px;
             box-sizing: border-box;
         }
+        .fee-metric {
+            background-color: #3c3c3c; padding: 8px 10px; border-radius: 4px;
+            display: flex; justify-content: space-between; font-size: 0.9em;
+            border-left: 3px solid #9C27B0;
+        }
+        .fee-metric .label { color: #bbb; }
+        .fee-metric .value { color: #f0f0f0; font-weight: 500; }
     </style>
 </head>
 <body>
@@ -118,7 +132,16 @@
                 <hr style="border-color: #444; width: 100%;">
                 <div class="info-item"><span class="label">Last Action:</span><span class="value" id="last-action">N/A</span></div>
                 <div class="info-item"><span class="label">Last Reward:</span><span class="value" id="last-reward">0.00</span></div>
-                <div class="info-item"><span class="label">Fees Paid (Step):</span><span class="value" id="fees-paid">$0.00</span></div>
+                <div class="info-item"><span class="label">Fees Paid (This Step):</span><span class="value" id="fees-paid-step">$0.00</span></div>
+
+                <!-- New Fee Metrics -->
+                <div class="fee-metric"><span class="label">Total Fees (This Episode):</span><span class="value" id="fees-this-episode">$0.00</span></div>
+                <div class="fee-metric"><span class="label">Total Fees (All Episodes):</span><span class="value" id="fees-all-episodes">$0.00</span></div>
+                <hr style="border-color: #444; width: 100%;">
+                <!-- New Episode Win Counters -->
+                <div class="win-counter"><span class="label">Agent Episode Wins:</span><span class="value agent" id="agent-episode-wins">0</span></div>
+                <div class="win-counter"><span class="label">HODL Episode Wins:</span><span class="value hodl" id="hodl-episode-wins">0</span></div>
+                <hr style="border-color: #444; width: 100%;">
             </div>
         </div>
         <!-- Secondary Chart for BTC Price -->
@@ -159,7 +182,17 @@
         const positionRatioEl = document.getElementById('position-ratio');
         const lastActionEl = document.getElementById('last-action');
         const lastRewardEl = document.getElementById('last-reward');
-        const feesPaidEl = document.getElementById('fees-paid');
+        const feesPaidStepEl = document.getElementById('fees-paid-step'); // Renamed for clarity
+        // --- NEW: Fee Metric Elements ---
+        const feesThisEpisodeEl = document.getElementById('fees-this-episode');
+        const feesAllEpisodesEl = document.getElementById('fees-all-episodes');
+        // --- END NEW ---
+        const agentEpisodeWinsEl = document.getElementById('agent-episode-wins');
+        const hodlEpisodeWinsEl = document.getElementById('hodl-episode-wins');
+        let agentEpisodeWins = 0;
+        let hodlEpisodeWins = 0;
+        let feesThisEpisode = 0.0;
+        let feesAllEpisodes = 0.0;
 
         const MAX_DATA_POINTS_ON_CHART = 200; // Keep chart performant
         Chart.defaults.color = '#e0e0e0'; // Default text color for chart
@@ -250,8 +283,8 @@
                             borderColor: 'rgba(0, 100, 0, 1)',
                             pointStyle: 'triangle',
                             rotation: 0,
-                            radius: 5, // Fixed small radius
-                            hoverRadius: 7, // Slightly larger on hover
+                            radius: 5,
+                            hoverRadius: 7,
                             yAxisID: 'yPriceValue',
                             order: 1
                         },
@@ -263,8 +296,8 @@
                             borderColor: 'rgba(139, 0, 0, 1)',
                             pointStyle: 'triangle',
                             rotation: 180,
-                            radius: 5, // Fixed small radius
-                            hoverRadius: 7, // Slightly larger on hover
+                            radius: 5,
+                            hoverRadius: 7,
                             yAxisID: 'yPriceValue',
                             order: 2
                         }
@@ -447,7 +480,29 @@
                 lastRewardEl.className = 'value';
                 if (reward > 0) lastRewardEl.classList.add('positive');
                 else if (reward < 0) lastRewardEl.classList.add('negative');
-                feesPaidEl.textContent = data.fees_paid_this_step !== null ? `$${data.fees_paid_this_step.toFixed(4)}` : '$0.00';
+                const stepFees = data.fees_paid_this_step !== null ? parseFloat(data.fees_paid_this_step) : 0.0;
+                feesPaidStepEl.textContent = `$${stepFees.toFixed(4)}`;
+                // --- NEW: Accumulate and Update Fee Metrics ---
+                if (!isNaN(stepFees)) {
+                    feesThisEpisode += stepFees;
+                    feesAllEpisodes += stepFees;
+                }
+                feesThisEpisodeEl.textContent = `$${feesThisEpisode.toFixed(4)}`;
+                feesAllEpisodesEl.textContent = `$${feesAllEpisodes.toFixed(4)}`;
+                // --- END NEW ---
+                // --- NEW: Check for episode end and update win counters ---
+                if (data.dones) {
+                    if (data.total_equity !== null && data.hodl_equity !== null) {
+                        if (data.total_equity >= data.hodl_equity) {
+                            agentEpisodeWins++;
+                        } else {
+                            hodlEpisodeWins++;
+                        }
+                        agentEpisodeWinsEl.textContent = agentEpisodeWins;
+                        hodlEpisodeWinsEl.textContent = hodlEpisodeWins;
+                    }
+                }
+                // --- END NEW ---
             } else if (data.type === "episode_reset") {
                 simTimeEl.textContent = 'N/A (New Episode)';
                 episodeStepEl.textContent = '0';
@@ -462,7 +517,12 @@
                 lastActionEl.className = 'value';
                 lastRewardEl.textContent = '0.00';
                 lastRewardEl.className = 'value';
-                feesPaidEl.textContent = '$0.00';
+                feesPaidStepEl.textContent = '$0.00';
+                // --- NEW: Reset 'Fees This Episode' ---
+                feesThisEpisode = 0.0;
+                feesThisEpisodeEl.textContent = `$${feesThisEpisode.toFixed(4)}`;
+                // feesAllEpisodesEl remains as is (accumulative)
+                // --- END NEW ---
             }
         }
 
@@ -510,6 +570,18 @@
             socket.onerror = function(error) {
                 console.error(`[error] ${error.message}`);
             };
+
+            agentEpisodeWins = 0;
+            hodlEpisodeWins = 0;
+            agentEpisodeWinsEl.textContent = agentEpisodeWins;
+            hodlEpisodeWinsEl.textContent = hodlEpisodeWins;
+            currentEpisodeDisplay = 0;
+            // --- NEW: Reset All Fee Counters on New Connection ---
+            feesThisEpisode = 0.0;
+            feesAllEpisodes = 0.0;
+            feesThisEpisodeEl.textContent = `$${feesThisEpisode.toFixed(4)}`;
+            feesAllEpisodesEl.textContent = `$${feesAllEpisodes.toFixed(4)}`;
+            // --- END NEW ---
         }
         
         window.addEventListener('resize', () => {
