@@ -10,7 +10,10 @@ class TradingEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 1}
 
     def __init__(self, df, feature_columns, window_size=100, initial_balance=10000,
-                 episode_length=720, fee_rate=0.00075, is_training=True):
+                 episode_length=720, fee_rate=0.00075, is_training=True,
+                 reward_scale_factor=100.0,
+                 fee_penalty_factor=1.0,    # For Strategy 1
+                 action_change_penalty_factor=0.01): # For Strategy 2
         super().__init__()
 
         self.df = df.reset_index() # Ensure simple integer indexing for iloc
@@ -20,6 +23,11 @@ class TradingEnv(gym.Env):
         self.episode_length = episode_length # 30 days * 24 hours
         self.fee_rate = fee_rate
         self.is_training = is_training # To control random episode starts
+
+        # Reward weights and constants
+        self.reward_scale_factor = reward_scale_factor
+        self.fee_penalty_factor = fee_penalty_factor
+        self.action_change_penalty_factor = action_change_penalty_factor # <- NEW ATTRIBUTE
 
         # Define columns for Z-score normalization (price/volume related)
         self.z_score_cols = [
@@ -64,6 +72,8 @@ class TradingEnv(gym.Env):
         self.hodl_initial_price = 0.0
         self.hodl_equity = initial_balance # Starts at initial balance
         # --- END HODL TRACKING VARIABLES ---
+
+        self.previous_action_value = 0.0 # <- NEW ATTRIBUTE
 
     def _get_observation(self):
         # Observation window: data from (current_decision_step_idx - window_size) to (current_decision_step_idx - 1)
@@ -113,9 +123,10 @@ class TradingEnv(gym.Env):
     def _take_action(self, action_value):
         # action_value is the target fraction of total equity for BTC position [-1.0, 1.0]
         trade_price = self.df.iloc[self.current_decision_step_idx]['open'] # Trade at open of current bar
+        previous_btc_held_before_trade = self.btc_held # Store current BTC held
 
         if trade_price <= 0: # Safety for bad data
-            return {"fees_paid": 0.0, "trade_type": "NONE", "trade_amount_btc": 0.0} # No trade, no fees
+            return 0.0, False, 0.0 # No trade, no fees, no trade executed, no change
 
         # Recalculate total equity just before trade decision based on trade_price
         # This ensures the target position is based on the most up-to-date equity valuation
@@ -123,7 +134,7 @@ class TradingEnv(gym.Env):
         equity_at_trade_moment = self.balance + current_position_value_at_trade_price
 
         if equity_at_trade_moment <= 0: # Cannot trade if no equity
-            return {"fees_paid": 0.0, "trade_type": "NONE", "trade_amount_btc": 0.0}
+            return 0.0, False, 0.0
 
         target_btc_value = action_value * equity_at_trade_moment
         target_btc_quantity = target_btc_value / trade_price
@@ -131,10 +142,12 @@ class TradingEnv(gym.Env):
         trade_quantity_btc = target_btc_quantity - self.btc_held
         executed_trade_value_abs = 0.0
         fees_paid = 0.0
-        trade_type_for_info = "NONE" # Initialize trade type
+        trade_executed_flag = False # Initialize
 
         if abs(trade_quantity_btc * trade_price) < 1e-3 : # Negligible trade, effectively no trade
             trade_quantity_btc = 0.0
+        else:
+            trade_executed_flag = True # A non-negligible trade is about to happen
 
         previous_btc_held = self.btc_held # Store before modification
 
@@ -152,8 +165,6 @@ class TradingEnv(gym.Env):
             fees_paid = executed_trade_value_abs * self.fee_rate
             self.balance -= (executed_trade_value_abs + fees_paid)
             self.btc_held += trade_quantity_btc
-            if executed_trade_value_abs > 0:
-                trade_type_for_info = "BUY"
 
         elif trade_quantity_btc < 0: # Try to sell BTC (or increase short)
             value_to_sell_btc = abs(trade_quantity_btc * trade_price)
@@ -161,55 +172,25 @@ class TradingEnv(gym.Env):
             fees_paid = executed_trade_value_abs * self.fee_rate
             self.balance += (executed_trade_value_abs - fees_paid)
             self.btc_held += trade_quantity_btc # trade_quantity_btc is negative
-            if executed_trade_value_abs > 0:
-                if previous_btc_held > 0 and self.btc_held <= 0:
-                    trade_type_for_info = "SELL"
-                elif previous_btc_held <= 0 and self.btc_held < previous_btc_held:
-                    trade_type_for_info = "SHORT"
-                elif previous_btc_held > 0 and self.btc_held > 0 and self.btc_held < previous_btc_held:
-                    trade_type_for_info = "REDUCE_LONG"
-                else:
-                    trade_type_for_info = "SELL"
 
         self.current_position_value_btc = self.btc_held * trade_price # Update after trade
         self.total_equity = self.balance + self.current_position_value_btc
-        return {"fees_paid": fees_paid, "trade_type": trade_type_for_info, "trade_amount_btc": trade_quantity_btc}
+        actual_trade_amount_btc = self.btc_held - previous_btc_held_before_trade # <- CALCULATE THIS
+        return fees_paid, trade_executed_flag, actual_trade_amount_btc # <- MODIFIED RETURN
 
-    def _calculate_reward(self, previous_total_equity):
-        # PnL and HODL returns are based on open-to-open prices of consecutive bars
-        # Price for current step's PnL calculation (P_t+1 for agent, P_t+1 for HODL)
-        # current_decision_step_idx is 't'. We need open of 't+1'.
-        if (self.current_decision_step_idx + 1) >= len(self.df):
-            # This can happen if episode ends exactly at the end of df
-            # or if df is too short for episode_length + 1 lookahead
-            # For simplicity, assume no change for this rare edge case affecting last step's reward
-            next_bar_open_price = self.df.iloc[self.current_decision_step_idx]['open']
-        else:
-            next_bar_open_price = self.df.iloc[self.current_decision_step_idx + 1]['open']
-
-        # Update total equity based on the next bar's open price
-        self.current_position_value_btc = self.btc_held * next_bar_open_price
-        self.total_equity = self.balance + self.current_position_value_btc
-
-        # Agent's log return for this step
-        if previous_total_equity <= 0 or self.total_equity <= 0: # Avoid log(0) or division by zero
-            agent_log_return = 0.0
-        else:
-            agent_log_return = np.log(self.total_equity / previous_total_equity)
-
-        # HODL log return for this step
-        current_bar_open_price = self.df.iloc[self.current_decision_step_idx]['open']
-        if current_bar_open_price <= 0 or next_bar_open_price <= 0:
-            hodl_log_return = 0.0
-        else:
-            hodl_log_return = np.log(next_bar_open_price / current_bar_open_price)
-        
-        reward = 100 * (agent_log_return - hodl_log_return)
-        return reward
+    def _calculate_reward(self, p_agent_t, p_hodl_t, fees_paid_this_step, current_action_value, previous_action_value): # <- MODIFIED SIGNATURE
+        # 1. Performance vs HODL (scaled)
+        reward_performance = self.reward_scale_factor * (p_agent_t - p_hodl_t)
+        # 2. Penalty for fees paid (scaled)
+        reward_fees = - (self.fee_penalty_factor * fees_paid_this_step)
+        # 3. Penalty for changing action (action smoothness)
+        action_delta = abs(current_action_value - previous_action_value) # delta is between 0 and 2
+        reward_action_change = - (self.action_change_penalty_factor * action_delta * self.reward_scale_factor)
+        total_reward = reward_performance + reward_fees + reward_action_change
+        return total_reward
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        # ...existing reset logic for agent's balance, btc_held, etc....
         self.balance = self.initial_balance
         self.btc_held = 0.0
         self.current_position_value_btc = 0.0
@@ -235,6 +216,8 @@ class TradingEnv(gym.Env):
         self.hodl_equity = self.hodl_btc_held * self.hodl_initial_price
         # --- END HODL RESET ---
 
+        self.previous_action_value = 0.0 # <- ADD THIS LINE
+
         observation = self._get_observation()
         # Update agent's equity info for the first step (before any action)
         first_decision_bar_open = self.df.iloc[self.current_decision_step_idx]['open']
@@ -251,30 +234,84 @@ class TradingEnv(gym.Env):
         return observation, info
 
     def step(self, action):
-        previous_total_equity = self.total_equity 
-        action_value = action[0]
-        step_action_results = self._take_action(action_value)
-        reward = self._calculate_reward(previous_total_equity) 
+        current_action_value = action[0]
+        equity_before_trade_at_current_open = self.total_equity
+
+        fees_paid_this_step, trade_executed_flag, actual_trade_amount_btc = self._take_action(current_action_value)
+        # After _take_action:
+        # - self.balance is updated
+        # - self.btc_held is updated
+        # - self.total_equity is updated (balance + btc_held * current_bar_open_price)
+        # - self.current_position_value_btc is updated (btc_held * current_bar_open_price)
+
+        current_bar_data = self.df.iloc[self.current_decision_step_idx]
+        current_bar_open_price = current_bar_data['open']
+
+        # Determine the price at which to evaluate the end-of-step performance
+        # This should be the price HODL is evaluated against for this step
+        if (self.current_decision_step_idx + 1) >= len(self.df): # End of data
+            price_at_end_of_step_period = current_bar_open_price # No further price movement
+        else:
+            price_at_end_of_step_period = self.df.iloc[self.current_decision_step_idx + 1]['open']
+
+        # --- Crucial Revaluation Step ---
+        # Re-evaluate the agent's portfolio at the 'price_at_end_of_step_period'
+        # This captures PnL from holding the position through the current bar.
+        self.current_position_value_btc = self.btc_held * price_at_end_of_step_period
+        self.total_equity = self.balance + self.current_position_value_btc
+        # --- End Revaluation ---
+
+        # Now calculate log returns based on consistent timing
+        if equity_before_trade_at_current_open <= 0 or self.total_equity <= 0:
+            p_agent_t = 0.0
+        else:
+            # Agent's return over the period: from before trade at current open,
+            # through the trade, and holding to the price_at_end_of_step_period.
+            p_agent_t = np.log(self.total_equity / equity_before_trade_at_current_open)
+
+        if current_bar_open_price <= 0 or price_at_end_of_step_period <= 0:
+            p_hodl_t = 0.0
+        else:
+            p_hodl_t = np.log(price_at_end_of_step_period / current_bar_open_price)
+
+        # Pass the correctly calculated p_agent_t and p_hodl_t to the reward function
+        reward = self._calculate_reward(p_agent_t, p_hodl_t, fees_paid_this_step, current_action_value, self.previous_action_value)
+
+        self.previous_action_value = current_action_value # <- UPDATE FOR NEXT STEP
+
         self.episode_step_count += 1
-        self.current_decision_step_idx += 1
+        self.current_decision_step_idx += 1 # Move to next bar for next decision
+
+        # Update position ratio based on the NEW self.total_equity
         if self.total_equity > 0:
             self.current_position_ratio = self.current_position_value_btc / self.total_equity
         else:
             self.current_position_ratio = 0.0
         self.current_position_ratio = np.clip(self.current_position_ratio, -1.0, 1.0)
+
         terminated = False
         if self.total_equity <= (self.initial_balance / 2):
             terminated = True
-            reward -= 100
+            reward -= 100 # Large penalty for ruin
+
         truncated = False
         if self.episode_step_count >= self.episode_length:
             truncated = True
-        if not terminated and not truncated and (self.current_decision_step_idx + 1 >= len(self.df)):
+        # Check if we're at the end of the dataframe for the next observation
+        if not terminated and not truncated and (self.current_decision_step_idx >= len(self.df)):
             truncated = True
-        observation = self._get_observation()
-        info = self._get_info_for_step(step_action_results)
+
+        observation = self._get_observation() # Gets obs for the NEW self.current_decision_step_idx
+
+        info = self._get_info_for_step({
+            "fees_paid": fees_paid_this_step,
+            "trade_type": "TRADE" if trade_executed_flag else "NONE",
+            "trade_amount_btc": actual_trade_amount_btc # <- PASS THIS
+        })
+
         if self.render_mode == "human":
             self._render_human()
+
         return observation, reward, terminated, truncated, info
 
     def _get_info_for_step(self, step_results):
