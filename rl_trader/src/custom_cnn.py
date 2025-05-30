@@ -36,6 +36,7 @@ class CustomCNN(BaseFeaturesExtractor):
                 stride=1,
                 padding="same" # Ensures output has same length as input for stride=1
             ),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             # Optional: Add more Conv1D layers or pooling
             # nn.MaxPool1d(kernel_size=2, stride=2), 
@@ -46,15 +47,21 @@ class CustomCNN(BaseFeaturesExtractor):
                 stride=1,
                 padding="same"
             ),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
+            nn.AvgPool1d(kernel_size=2),  # (reduces seq-length by ½)
             nn.Flatten(),  # Flattens the output of CNN (batch_size, num_filters * seq_len_after_conv)
         )
 
         # Compute the shape of the CNN output dynamically
         # To do this, pass a dummy tensor through the CNN part
         with torch.no_grad():
+            # Ensure the dummy lives on the same device as the module’s parameters
+            device = next(self.parameters()).device
             # Dummy input: (batch_size=1, seq_len=window_size, channels=num_features)
-            dummy_market_data = torch.as_tensor(observation_space["market_data"].sample()[None]).float()
+            dummy_market_data = torch.as_tensor(
+                observation_space["market_data"].sample()[None]
+            ).float().to(device)
             # Permute to (batch_size, channels, seq_len) for Conv1d
             dummy_market_data = dummy_market_data.permute(0, 2, 1)
             cnn_output_dim = self.cnn(dummy_market_data).shape[1]

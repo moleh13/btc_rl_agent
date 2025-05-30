@@ -3,6 +3,7 @@
 import logging
 from stable_baselines3.common.callbacks import BaseCallback
 from live_training_server import LiveTrainingServer # Import your server
+import numpy as np
 
 # Configure basic logging for the callback (optional)
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - CALLBACK - %(message)s')
@@ -21,6 +22,10 @@ class VisualizationCallback(BaseCallback):
         self.server_port = server_port
         self.server = None
         self.current_episode_num = 0 # Start at 0, increment when a new one begins
+        # For position/exposure metrics
+        from collections import deque
+        self._pos_history = deque(maxlen=24)
+        self._exposure_window = deque(maxlen=100)
 
     def _on_training_start(self) -> None:
         """
@@ -64,7 +69,7 @@ class VisualizationCallback(BaseCallback):
         if not self.server:
             return True # Continue training even if server isn't up
 
-        infos = self.locals.get("infos", [{}])[0] 
+        infos = self.locals.get("infos", [{}])[0]
         actions = self.locals.get("actions") # The action taken by the agent
         rewards = self.locals.get("rewards") # Reward received
         dones = self.locals.get("dones", [False])[0] # Whether the episode ended
@@ -79,6 +84,17 @@ class VisualizationCallback(BaseCallback):
                 logging.warning(f"Could not format timestamp: {timestamp_obj}, error: {e}")
         elif timestamp_obj is not None: # If it's not None but not a Timestamp (e.g., already a string)
             timestamp_str_for_js = str(timestamp_obj)
+
+        # --- Position/Exposure Metrics ---
+        current_position_ratio = infos.get("current_position_ratio", 0.0)
+        self._pos_history.append(current_position_ratio)
+        avg_pos = float(np.mean(self._pos_history)) if len(self._pos_history) > 0 else 0.0
+        # Long/short exposure: count fraction of steps in window where action > 0.02 or < -0.02
+        is_long = current_position_ratio > 0.02
+        is_short = current_position_ratio < -0.02
+        self._exposure_window.append(current_position_ratio)
+        long_exposure_pct = sum(x > 0.02 for x in self._exposure_window) / len(self._exposure_window) if len(self._exposure_window) > 0 else 0.0
+        short_exposure_pct = sum(x < -0.02 for x in self._exposure_window) / len(self._exposure_window) if len(self._exposure_window) > 0 else 0.0
 
         step_data = {
             "type": "step_data",
@@ -104,7 +120,12 @@ class VisualizationCallback(BaseCallback):
             "fees_paid_this_step": infos.get("fees_paid_this_step", 0.0), # Add this to TradingEnv info
             "trade_type": infos.get("trade_type_this_step", "NONE"),             # <<< NEW FIELD
             "trade_amount_btc": infos.get("trade_amount_btc_this_step", 0.0),   # <<< NEW FIELD
-            "dones": bool(dones) # <--- Add this flag
+            "dones": bool(dones), # <--- Add this flag
+
+            # --- Added metrics ---
+            "avg_pos_last24": avg_pos,
+            "long_exposure_pct": long_exposure_pct,
+            "short_exposure_pct": short_exposure_pct,
         }
         
         self.server.broadcast_data(step_data)

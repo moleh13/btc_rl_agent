@@ -19,8 +19,13 @@ EXPECTED_FEATURE_COLUMNS = [
 ]
 
 def load_and_preprocess_data(csv_file_path,
-                             date_column_name='timestamp',  # Adjust if your date column has a different name
-                             expected_features=None):
+                             date_column_name: str = 'timestamp',
+                             expected_features=None,
+                             train_start: str = "2017-08-27 13:00:00",
+                             train_end:   str = "2023-12-31 23:59:59",
+                             test_start:  str = "2024-01-01 00:00:00",
+                             test_end:    str | None = None,
+                             return_raw: bool = False):
     """
     Loads, preprocesses, and splits the BTC hourly data.
 
@@ -28,12 +33,14 @@ def load_and_preprocess_data(csv_file_path,
         csv_file_path (str): Path to the CSV file.
         date_column_name (str): The name of the column containing datetime information.
         expected_features (list): List of column names that are expected to be features.
+        train_start (str): Training data start date.
+        train_end (str): Training data end date.
+        test_start (str): Testing data start date.
+        test_end (str|None): Testing data end date (inclusive). If None, uses all data after test_start.
+        return_raw (bool): If True, also return the raw DataFrame before feature selection/cleaning.
 
     Returns:
-        tuple: (train_df, test_df, feature_columns)
-               train_df: DataFrame for training.
-               test_df: DataFrame for testing.
-               feature_columns: List of actual feature column names used.
+        tuple: (train_df, test_df, feature_columns) or (raw_df, train_df, test_df, feature_columns)
     """
     if expected_features is None:
         expected_features = EXPECTED_FEATURE_COLUMNS
@@ -97,32 +104,31 @@ def load_and_preprocess_data(csv_file_path,
     df_features.ffill(inplace=True)
     df_features.bfill(inplace=True)
 
-    nan_counts_after = df_features.isnull().sum()
-    nan_cols_after = nan_counts_after[nan_counts_after > 0]
-    if not nan_cols_after.empty:
-        print(f"Warning: NaNs still present after ffill/bfill in columns:\n{nan_cols_after}")
-        print("This might happen if entire columns are NaN or NaNs exist at the very start AND end of the dataset.")
-        print("Consider dropping these rows/columns or using more sophisticated imputation if this is an issue.")
-        # Depending on strictness, you might want to raise an error here:
-        # raise ValueError(f"NaNs found after fill: {nan_cols_after.index.tolist()}")
+    # --- Fail hard if any NaNs survive ---
+    if df_features.isnull().values.any():
+        missing = df_features.columns[df_features.isnull().any()].tolist()
+        raise ValueError(
+            f"NaNs remain after fill in columns: {missing}. "
+            "Fix the source CSV or replace with an explicit imputation."
+        )
     else:
         print("NaNs handled successfully.")
-        
+    
     # --- 5. Data Splitting ---
-    # As per your requirements:
-    # Training: 2017-08-27 13:00:00 to 2023-12-31 23:00:00
-    # Testing:  2024-01-01 00:00:00 to 2024-12-31 23:00:00 (or end of data if earlier)
-
-    train_start_date = pd.to_datetime("2017-08-27 13:00:00")
-    train_end_date = pd.to_datetime("2023-12-31 23:59:59") # Inclusive end for slicing
-    test_start_date = pd.to_datetime("2024-01-01 00:00:00")
-    # test_end_date can be the end of the DataFrame
+    train_start_date = pd.to_datetime(train_start)
+    train_end_date   = pd.to_datetime(train_end)
+    test_start_date  = pd.to_datetime(test_start)
+    test_end_date    = pd.to_datetime(test_end) if test_end else None
 
     # Filter out data outside the global range if necessary, though splitting handles this.
     df_features = df_features[df_features.index >= train_start_date]
 
     train_df = df_features[df_features.index <= train_end_date]
-    test_df = df_features[df_features.index >= test_start_date]
+    if test_end_date is None:
+        test_df = df_features[df_features.index >= test_start_date]
+    else:
+        test_df = df_features[(df_features.index >= test_start_date) &
+                              (df_features.index <= test_end_date)]
 
     print(f"Training data shape: {train_df.shape}, from {train_df.index.min()} to {train_df.index.max()}")
     print(f"Testing data shape: {test_df.shape}, from {test_df.index.min()} to {test_df.index.max()}")
@@ -132,7 +138,10 @@ def load_and_preprocess_data(csv_file_path,
     if test_df.empty:
         print("Warning: Testing DataFrame is empty. Check date ranges and CSV data.")
 
-    return train_df, test_df, expected_features
+    if return_raw:
+        return df, train_df, test_df, expected_features
+    else:
+        return train_df, test_df, expected_features
 
 
 if __name__ == '__main__':

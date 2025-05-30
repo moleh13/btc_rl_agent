@@ -6,7 +6,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import traceback # Added for detailed error logging
 from stable_baselines3 import SAC
-import joblib
 
 # Import custom modules
 from data_manager import load_and_preprocess_data, EXPECTED_FEATURE_COLUMNS
@@ -18,7 +17,6 @@ DATA_CSV_PATH = '../../BTC_hourly_with_features.csv' # Corrected path to the CSV
 DATE_COLUMN_NAME = 'timestamp'
 MODEL_PATH = "./models/best_sac_trader/best_model.zip" # Path to the trained model
 # Or use: MODEL_PATH = "./models/sac_trader_final.zip"
-SCALER_PATH = os.path.join(os.path.dirname(__file__), "..", "artifacts", "price_scaler.pkl")
 
 # Environment Hyperparameters (should match training, but some can be different for eval)
 WINDOW_SIZE = 100
@@ -73,13 +71,6 @@ def main():
     )
     print(f"Test data shape: {test_df_full.shape}")
 
-    # --- Load and apply scaler fitted on train ---
-    if not os.path.exists(SCALER_PATH):
-        raise FileNotFoundError(f"Scaler not found at {SCALER_PATH}. Run training first.")
-    scaler = joblib.load(SCALER_PATH)
-    test_df_full[feature_cols] = scaler.transform(test_df_full[feature_cols])
-    print(f"Scaler loaded from {SCALER_PATH} and applied to test data.")
-
     if test_df_full.empty:
         print("Error: Test data is empty. Exiting.") # Restored line
         return # Restored line
@@ -102,39 +93,34 @@ def main():
         initial_balance=INITIAL_BALANCE,
         episode_length=eval_episode_length, # Agent will run for this many steps
         fee_rate=FEE_RATE,
-        is_training=False # Crucial: ensures sequential processing and starts at window_size
+        is_training=False, # Crucial: ensures sequential processing and starts at window_size
+        reward_scale_factor=100.0,
+        fee_penalty_factor=10.0,
+        action_change_penalty_factor=0.5,
+        max_leverage=1.0,
+        carry_cost_rate=0.00005,
+        position_penalty_factor=0.01,
+        benchmark_weight=0.05,
+        use_sortino_ratio=True,
+        sortino_target_return=0.00001
     )
     print(f"Evaluation environment created. Agent will take {eval_episode_length} steps.")
-
 
     # --- 3. Load the Trained Model ---
     print(f"Loading trained model from {MODEL_PATH}...")
     if not os.path.exists(MODEL_PATH):
         print(f"Error: Model not found at {MODEL_PATH}. Please train a model first or check the path.") # Restored line
         return # Restored line
-    
-    # When loading a model with a custom policy/feature extractor,
-    # you need to provide `policy_kwargs` to the load function.
-    # SB3 will need CustomCNN to reconstruct the policy.
-    # The custom_objects dictionary is usually not needed for this scenario.
-    
-    # For SAC, policy_kwargs are needed if CustomCNN was defined there
-    policy_kwargs_load = dict(
-        features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=256), # Must match trained model's features_dim
-        use_sde=False  # Added to match the stored policy kwargs
-    )
 
     try:
-        model = SAC.load(MODEL_PATH, env=eval_env, policy_kwargs=policy_kwargs_load)
-        # If the above policy_kwargs way doesn't work directly for SAC loading,
-        # often just ensuring CustomCNN is imported is enough and `env` helps resolve it.
-
+        model = SAC.load(MODEL_PATH, env=eval_env)
+        # Optionally, check policy_kwargs compatibility:
+        # assert model.policy_kwargs['features_extractor_class'] == CustomCNN
     except Exception as e:
-        print(f"Error loading model: {e}") # Restored line
-        print("Ensure CustomCNN is imported and policy_kwargs (if used for features_dim) are correct.") # Restored line
-        traceback.print_exc() # Added for more detailed error information
-        return # Restored line
+        print(f"Error loading model: {e}")
+        print("Ensure CustomCNN is imported and policy_kwargs (if used for features_dim) are correct.")
+        traceback.print_exc()
+        return
 
     # --- 4. Run Evaluation Loop ---
     print("Running evaluation...")
@@ -225,8 +211,16 @@ def main():
     print(f"HODL Sharpe Ratio (simplified, per-period): {hodl_sharpe:.4f}")
     
     # Max Drawdown
-    # TODO: Implement max drawdown calculation
-
+    def max_drawdown(equity_curve):
+        equity = np.array(equity_curve)
+        running_max = np.maximum.accumulate(equity)
+        drawdowns = (equity - running_max) / running_max
+        return float(drawdowns.min()) if len(drawdowns) > 0 else 0.0
+    agent_max_dd = max_drawdown(agent_equity_ts.values)
+    hodl_max_dd = max_drawdown(hodl_equity_ts.values) if not hodl_equity_ts.empty else 0.0
+    print(f"Agent Max Drawdown: {agent_max_dd:.2%}")
+    print(f"HODL Max Drawdown: {hodl_max_dd:.2%}")
+    
     # Plotting
     plt.figure(figsize=(14, 7))
     plt.plot(agent_equity_ts.index, agent_equity_ts.values, label=f"Agent (Final: ${final_agent_equity:,.0f})", color="blue")

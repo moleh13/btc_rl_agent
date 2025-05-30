@@ -98,9 +98,15 @@ def main():
         episode_length=EPISODE_LENGTH,
         fee_rate=FEE_RATE,
         is_training=True,
-        reward_scale_factor=100.0, # Default, can be changed
-        fee_penalty_factor=1.0,    # Explicitly set or tuned
-        action_change_penalty_factor=0.01 # Explicitly set or tuned
+        reward_scale_factor=100.0,        # Or your preferred value
+        fee_penalty_factor=10.0,          # Tuned direct penalty
+        action_change_penalty_factor=0.5, # Tuned direct penalty
+        max_leverage=1.0,
+        carry_cost_rate=0.00005,          # Actual per-period rate
+        position_penalty_factor=0.01,     # Tuned for scaled penalty
+        benchmark_weight=0.05,
+        use_sortino_ratio=True,           # Example: Using Sortino
+        sortino_target_return=0.00001     # Example: Small positive target
     )
     # Wrap with Monitor for episode stats (rewards, lengths) for TensorBoard
     train_env_monitored = Monitor(train_env_raw, filename=os.path.join(LOG_DIR, "train_monitor.csv"))
@@ -120,8 +126,14 @@ def main():
         fee_rate=FEE_RATE,
         is_training=False, # Crucial: ensures sequential processing of test data
         reward_scale_factor=100.0,
-        fee_penalty_factor=1.0,    # Keep consistent or use different for eval if intended
-        action_change_penalty_factor=0.01 # Keep consistent
+        fee_penalty_factor=10.0,
+        action_change_penalty_factor=0.5,
+        max_leverage=1.0,
+        carry_cost_rate=0.00005,
+        position_penalty_factor=0.01,
+        benchmark_weight=0.05,
+        use_sortino_ratio=True,
+        sortino_target_return=0.00001
     )
     eval_env_monitored = Monitor(eval_env_raw, filename=os.path.join(LOG_DIR, "eval_monitor.csv"))
     eval_env = DummyVecEnv([lambda: eval_env_monitored])
